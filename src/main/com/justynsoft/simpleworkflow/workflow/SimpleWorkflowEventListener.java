@@ -8,13 +8,13 @@ public class SimpleWorkflowEventListener implements ApplicationListener<SimpleWo
     @Override
     public void onApplicationEvent(SimpleWorkflowEvent workflowEvent) {
         SimpleWorkflow workflow = null;
-        if (workflowEvent.getWorkflowId() == null) {
-            workflow = workflowManager.getWorkflow(null, Boolean.TRUE);
-            workflowEvent.setWorkflowId(workflow.getWorkflowId());
-        } else {
-            workflow = workflowManager.getWorkflow(workflowEvent.getWorkflowId(), Boolean.FALSE);
+        //if it is new workflow
+        if(workflowEvent.getWorkflowTemplateId() != null && workflowEvent.getWorkflowId() == null){
+            Long newWorkflowId = workflowManager.createWorkflow(workflowEvent.getWorkflowTemplateId());
+            workflowEvent.setWorkflowId(newWorkflowId);
         }
 
+        workflow = workflowManager.getWorkflow(workflowEvent.getWorkflowId());
         if (workflow != null) {
             workflowManager.runWorkflow(workflow, workflowEvent);
         } else {

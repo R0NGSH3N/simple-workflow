@@ -1,14 +1,19 @@
 package com.justynsoft.simpleworkflow.workflow;
 
 import com.google.common.collect.Lists;
-import com.justynsoft.simpleworkflow.models.*;
+import com.justynsoft.simpleworkflow.template.*;
 import com.justynsoft.simpleworkflow.utils.ApplicationContextUtils;
+import org.apache.commons.beanutils.BeanUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.ApplicationEventPublisherAware;
 
+import javax.annotation.PostConstruct;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -17,9 +22,14 @@ import java.util.stream.Collectors;
 public class SimpleWorkflowManager implements ApplicationEventPublisherAware {
     private static final Logger logger = LoggerFactory.getLogger(SimpleWorkflowManager.class);
     private ApplicationEventPublisher publisher;
+    @Autowired
     private WorkitemTemplateDAO workitemTemplateDAO;
+    @Autowired
     private WorkitemAttributesTemplateDAO workitemAttributesTemplateDAO;
+    @Autowired
     private WorkflowTemplateDAO workflowTemplateDAO;
+    @Autowired
+    private SimpleWorkflowRepository simpleWorkflowRepository;
     private Map<Long, WorkflowTemplate> workflowTemplateMap;
 
     @Override
@@ -27,6 +37,7 @@ public class SimpleWorkflowManager implements ApplicationEventPublisherAware {
         this.publisher = applicationEventPublisher;
     }
 
+    @PostConstruct
     public void loadTemplates() {
         logger.info("*** Workflow Manager start initialiing...");
         //load all the workitem templates:
@@ -79,26 +90,67 @@ public class SimpleWorkflowManager implements ApplicationEventPublisherAware {
 
         SimpleWorkflow workflowInstance = new SimpleWorkflow();
         workflowInstance.setTemplate(workflowTemplate);
-        workflowInstance.setStatus(SimpleWorkflow.STATUS.PEDNGIN);
+        workflowInstance.setStatus(SimpleWorkflow.STATUS.PENDING);
 
         List<WorkitemTemplate> workitemTemplateList = workflowTemplate.getWorkitemTemplates();
+        /**
+         * assembly workitem list based on the template
+         */
+        Map<Long, SimpleWorkitem> workitemMap = new HashMap<>();
         workitemTemplateList.forEach(workitemTemplate -> {
-            Class classDef = Class.forName(workitemTemplate.getClassName());
-            SimpleWorkitem simpleWorkitem = (SimpleWorkitem) classDef.newInstance();
+            SimpleWorkitem simpleWorkitem = null;
+            try {
+                Class classDef = Class.forName(workitemTemplate.getClassName());
+                simpleWorkitem = (SimpleWorkitem) classDef.newInstance();
+                //set up the attributes for workitem
+                for (WorkitemAttributesTemplate workitemAttribute : workitemTemplate.getAttributes()) {
+                    BeanUtils.setProperty(simpleWorkitem, workitemAttribute.getAttributeName(), workitemAttribute.getGetAttributeValue());
+                }
+            } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | InvocationTargetException e) {
+                e.printStackTrace();
+            }
             simpleWorkitem.setWorkitemTemplate(workitemTemplate);
             simpleWorkitem.setApplicationContext(ApplicationContextUtils.getApplicationContext());
-
-
+            simpleWorkitem.setStatus(SimpleWorkitem.STATUS.PENDING);
+            //we will NOT set workitem ID here, it will be filled later by database
+            //simpleWorkitem.setWorkitemId();
+            workitemMap.put(workitemTemplate.getTemplateId(), simpleWorkitem);
         });
 
+        //set the next workitem to make workitem chain
+        workitemMap.forEach((workitemTemplateId, simpleWorkitem) -> {
+                    simpleWorkitem.setNextWorkitem(workitemMap.get(simpleWorkitem.getWorkitemTemplate().getTemplateId()));
+                }
+        );
 
+        workflowInstance.setWorkItemList(new ArrayList<SimpleWorkitem>(workitemMap.values()));
+        return workflowInstance;
     }
 
-    public SimpleWorkflow getWorkflow(Long workflowId, Boolean isNew) {
-        if (isNew) {
+    public SimpleWorkflow getWorkflow(Long workflowId) {
+        SimpleWorkflow workflow = simpleWorkflowRepository.findWorkflowByWorkflowId(workflowId);
+        SimpleWorkflow workflowInstance = instantiateWorkflow(workflow.getWorkflowTemplateId());
+        workflowInstance.setWorkflowId(workflow.getWorkflowId());
+        workflowInstance.setCreateDate(workflow.getCreateDate());
+        workflowInstance.setLastUpdateDateTime(workflow.getLastUpdateDateTime());
+        workflowInstance.setStatus(workflow.getStatus());
+        Map<Long, SimpleWorkitem> workitemMap = workflow.getWorkItemList().stream().collect(
+                Collectors.toMap(SimpleWorkitem::getWorkitemTemplateId, Function.identity()));
+        workflowInstance.getWorkItemList().forEach(simpleWorkitem -> {
+            SimpleWorkitem workitemDataFromDB = workitemMap.get(simpleWorkitem.getWorkitemTemplate());
+            simpleWorkitem.setStatus(workitemDataFromDB.getStatus());
+            simpleWorkitem.setWorkitemId(workitemDataFromDB.getWorkitemId());
+            simpleWorkitem.setWorkflowId(workitemDataFromDB.getWorkflowId());
+            simpleWorkitem.setWorkitemTemplateId(workitemDataFromDB.getWorkitemTemplateId());
+        });
 
-        }
+        return workflowInstance;
+    }
 
+    public Long createWorkflow(Long workflowTemplateId){
+        SimpleWorkflow newWorkflow = instantiateWorkflow(workflowTemplateId);
+        SimpleWorkflow createdWorkflow = simpleWorkflowRepository.insertWorkflow(newWorkflow);
+        return createdWorkflow.getWorkflowId();
     }
 
     public void runWorkflow(SimpleWorkflow workflow, SimpleWorkflowEvent workflowEvent) {
