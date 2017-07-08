@@ -27,6 +27,16 @@ public class SimpleWorkflow {
     private List<SimpleWorkitem> workItemList;
     @Transient
     private WorkflowTemplate template;
+    @Transient
+    private SimpleWorkitem startWorkitem;
+
+    public SimpleWorkitem getStartWorkitem() {
+        return startWorkitem;
+    }
+
+    public void setStartWorkitem(SimpleWorkitem startWorkitem) {
+        this.startWorkitem = startWorkitem;
+    }
 
     public Long getWorkflowTemplateId() {
         return workflowTemplateId;

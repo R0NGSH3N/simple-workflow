@@ -17,6 +17,11 @@ public class SimpleWorkflowRepository {
         return workflow;
     }
 
+    public SimpleWorkflow updateWorkflow(SimpleWorkflow workflow){
+        //TODO
+        return workflow;
+    }
+
     public SimpleWorkflow insertWorkflow(SimpleWorkflow newWorkflow){
         newWorkflow.getWorkItemList().forEach(simpleWorkitem ->{
             simpleWorkitemDAO.save(simpleWorkitem);

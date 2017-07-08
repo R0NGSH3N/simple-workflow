@@ -32,9 +32,20 @@ public class SimpleWorkflowManager implements ApplicationEventPublisherAware {
     private SimpleWorkflowRepository simpleWorkflowRepository;
     private Map<Long, WorkflowTemplate> workflowTemplateMap;
 
+
     @Override
     public void setApplicationEventPublisher(ApplicationEventPublisher applicationEventPublisher) {
         this.publisher = applicationEventPublisher;
+    }
+
+    private Long findFirstWorkitemTemplateId(Long lastWorkitemTemplateId, Map<Long, Long> templateMap) {
+        if (templateMap.size() == 0) {
+            return lastWorkitemTemplateId;
+        }
+
+        Long prevouseTemplateId = templateMap.get(lastWorkitemTemplateId);
+        templateMap.remove(lastWorkitemTemplateId);
+        return findFirstWorkitemTemplateId(prevouseTemplateId, templateMap);
     }
 
     @PostConstruct
@@ -57,14 +68,18 @@ public class SimpleWorkflowManager implements ApplicationEventPublisherAware {
             workitemTemplate.setAttributes(attributes);
         }
 
+        Long lastWorkitemTemplateId = null;
         /**
          * fullfill the next workitem template
          */
         Map<Long, WorkitemTemplate> workitemTemplateMap = workitemTemplateList.stream().collect(
                 Collectors.toMap(WorkitemTemplate::getTemplateId, Function.identity()));
-        workitemTemplateList.forEach(workitemTemplate -> {
+        for (WorkitemTemplate workitemTemplate : workitemTemplateList) {
+            if (workitemTemplate.getNextWorkitemTemplateId() == 0) {
+                lastWorkitemTemplateId = workitemTemplate.getTemplateId();
+            }
             workitemTemplate.setNextWorkitemTemplate(workitemTemplateMap.get(workitemTemplate.getNextWorkitemTemplateId()));
-        });
+        }
 
         Map<Long, List<WorkitemTemplate>> workitemTemplateMapByWorkflowId = workitemTemplateList.stream().collect(
                 Collectors.groupingBy(WorkitemTemplate::getWorkflowTemplateId)
@@ -73,13 +88,24 @@ public class SimpleWorkflowManager implements ApplicationEventPublisherAware {
         /**
          * full fill the workflow
          */
-        workflowTemplateList.forEach(workflowTemplate -> {
-            workflowTemplate.setWorkitemTemplates(workitemTemplateMapByWorkflowId.get(workflowTemplate.getTemplateId()));
-        });
+        for(WorkflowTemplate workflowTemplate: workflowTemplateList){
+            List<WorkitemTemplate> workitemTemplates = workitemTemplateMapByWorkflowId.get(workflowTemplate.getTemplateId());
+            workflowTemplate.setWorkitemTemplates(workitemTemplates);
+
+            //figure out the start workitem for workflow
+            Map<Long, Long> templatesMap = new HashMap<>();
+            for (WorkitemTemplate workitemTemplate : workitemTemplates) {
+                if (workitemTemplate.getNextWorkitemTemplateId() != 0) {
+                    templatesMap.put(workitemTemplate.getNextWorkitemTemplateId(), workitemTemplate.getTemplateId());
+                }
+            }
+            workflowTemplate.setStartWorkitemTemplateId(findFirstWorkitemTemplateId(lastWorkitemTemplateId, templatesMap));
+        }
 
         this.workflowTemplateMap = workflowTemplateList.stream().collect(
                 Collectors.toMap(WorkflowTemplate::getTemplateId, Function.identity())
         );
+
     }
 
     private final SimpleWorkflow instantiateWorkflow(Long workflowTemplateId) {
@@ -93,6 +119,7 @@ public class SimpleWorkflowManager implements ApplicationEventPublisherAware {
         workflowInstance.setStatus(SimpleWorkflow.STATUS.PENDING);
 
         List<WorkitemTemplate> workitemTemplateList = workflowTemplate.getWorkitemTemplates();
+        Long startWorkitemTemplateId = workflowTemplate.getStartWorkitemTemplateId();
         /**
          * assembly workitem list based on the template
          */
@@ -110,8 +137,12 @@ public class SimpleWorkflowManager implements ApplicationEventPublisherAware {
                 e.printStackTrace();
             }
             simpleWorkitem.setWorkitemTemplate(workitemTemplate);
+            if(workitemTemplate.getTemplateId() == startWorkitemTemplateId){
+                workflowInstance.setStartWorkitem(simpleWorkitem);
+            }
             simpleWorkitem.setApplicationContext(ApplicationContextUtils.getApplicationContext());
             simpleWorkitem.setStatus(SimpleWorkitem.STATUS.PENDING);
+
             //we will NOT set workitem ID here, it will be filled later by database
             //simpleWorkitem.setWorkitemId();
             workitemMap.put(workitemTemplate.getTemplateId(), simpleWorkitem);
@@ -147,13 +178,23 @@ public class SimpleWorkflowManager implements ApplicationEventPublisherAware {
         return workflowInstance;
     }
 
-    public Long createWorkflow(Long workflowTemplateId){
+    public Long createWorkflow(Long workflowTemplateId) {
         SimpleWorkflow newWorkflow = instantiateWorkflow(workflowTemplateId);
         SimpleWorkflow createdWorkflow = simpleWorkflowRepository.insertWorkflow(newWorkflow);
         return createdWorkflow.getWorkflowId();
     }
 
     public void runWorkflow(SimpleWorkflow workflow, SimpleWorkflowEvent workflowEvent) {
+        process(workflow.getStartWorkitem(), workflowEvent, workflow);
+        simpleWorkflowRepository.updateWorkflow(workflow);
+    }
 
+    private void process(SimpleWorkitem simpleWorkitem, SimpleWorkflowEvent simpleWorkflowEvent, SimpleWorkflow simpleWorkflow) {
+        if (simpleWorkitem != null) {
+            SimpleWorkitem.STATUS status = simpleWorkitem.process(simpleWorkflowEvent, simpleWorkflow);
+            if (status == SimpleWorkitem.STATUS.COMPLETED) {
+                process(simpleWorkitem.getNextWorkitem(), simpleWorkflowEvent, simpleWorkflow);
+            }
+        }
     }
 }

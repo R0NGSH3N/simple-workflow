@@ -22,9 +22,19 @@ public class WorkflowTemplate {
     private String description;
     @Transient
     private List<WorkitemTemplate> workitemTemplates;
+    @Transient
+    private Long startWorkitemTemplateId;
 
     //default constructor for JPA
     protected WorkflowTemplate() {
+    }
+
+    public Long getStartWorkitemTemplateId() {
+        return startWorkitemTemplateId;
+    }
+
+    public void setStartWorkitemTemplateId(Long startWorkitemTemplateId) {
+        this.startWorkitemTemplateId = startWorkitemTemplateId;
     }
 
     public long getTemplateId() {

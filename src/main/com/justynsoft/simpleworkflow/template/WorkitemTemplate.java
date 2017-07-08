@@ -27,8 +27,6 @@ public class WorkitemTemplate {
     @Transient
     private WorkitemTemplate nextWorkitemTemplate;
     @Transient
-    private Boolean isStartWorkitem;
-    @Transient
     private List<WorkitemAttributesTemplate> attributes;
 
     //default constructor for JPA
@@ -89,14 +87,6 @@ public class WorkitemTemplate {
 
     public void setRerunable(Boolean rerunable) {
         isRerunable = rerunable;
-    }
-
-    public Boolean getStartWorkitem() {
-        return isStartWorkitem;
-    }
-
-    public void setStartWorkitem(Boolean startWorkitem) {
-        isStartWorkitem = startWorkitem;
     }
 
     public List<WorkitemAttributesTemplate> getAttributes() {
