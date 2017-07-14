@@ -8,7 +8,7 @@ public class RestfulController {
 
     @RequestMapping("/")
     public String index() {
-        return "Greetings from Spring Boot!";
+        return "Greetings from Simple Workflow!";
     }
 
 }
