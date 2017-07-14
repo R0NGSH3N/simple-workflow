@@ -148,7 +148,7 @@ public abstract class SimpleWorkitem<T extends SimpleWorkflowEvent> {
         } else {
             logger.info("Workitem " + this.getWorkitemId() + " start processing...");
             String errorMessage = "";
-            STATUS statusAfterProcess = handleEvent(simpleWorkflowEvent, errorMessage, simpleWorkflow);
+            STATUS statusAfterProcess = handleEvent(simpleWorkflowEvent, errorMessage);
             this.status = statusAfterProcess;
             if (statusAfterProcess == STATUS.ERROR) {
                 logger.error("process error: " + errorMessage + " workevent: " + simpleWorkflowEvent + " workitem Id: " + this.getWorkitemId());
@@ -161,7 +161,7 @@ public abstract class SimpleWorkitem<T extends SimpleWorkflowEvent> {
         }
     }
 
-    public abstract STATUS handleEvent(T simpleWorkflowEvent, String errorMessage, SimpleWorkflow simpleWorkflow);
+    public abstract STATUS handleEvent(T simpleWorkflowEvent, String errorMessage);
 
     public abstract STATUS handleRejectEventOnStartedStatus(T simpleWorkflowEvent);
 
