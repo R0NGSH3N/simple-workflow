@@ -2,20 +2,42 @@ package com.justynsoft.simpleworkflow.workflow;
 
 import org.springframework.context.ApplicationEvent;
 
-public class SimpleWorkflowEvent extends ApplicationEvent {
-    private Long workflowId;
-    private Long workflowTemplateId;
-    private String requestId;
-    private Object attachedObject;
-    private String comment;
-    private Object source;
+public class SimpleWorkflowEvent<T> extends ApplicationEvent{
+    public enum InternalEvent implements SimpleWorkflowEventType{
+        RUN_WORKFLOW("RUN_WORKFLOW"),
+        REJECT_WORKFLOW("REJECT_WROKFLOW");
 
-    public SimpleWorkflowEvent(Long workflowId, String requestId, Object attachedObject, String comment, Object source) {
+        private String name;
+        InternalEvent(String name){
+            this.name = name;
+        }
+
+        public SimpleWorkflowEventType getEvent(String name){
+            return InternalEvent.valueOf(name);
+        }
+
+        @Override
+        public String getName(){
+            return this.name;
+        }
+    }
+    private SimpleWorkflowEventType type;
+    private Long workflowTemplateId;
+    private Long workflowId;
+    private String requestId;
+    private T attachecObject;
+    private String comment;
+
+    public SimpleWorkflowEvent(Object source){
         super(source);
-        this.workflowId = workflowId;
-        this.requestId = requestId;
-        this.attachedObject = attachedObject;
-        this.comment = comment;
+    }
+
+    public SimpleWorkflowEventType getType() {
+        return type;
+    }
+
+    public void setType(SimpleWorkflowEventType type) {
+        this.type = type;
     }
 
     public Long getWorkflowTemplateId() {
@@ -42,12 +64,12 @@ public class SimpleWorkflowEvent extends ApplicationEvent {
         this.requestId = requestId;
     }
 
-    public Object getAttachedObject() {
-        return attachedObject;
+    public T getAttachecObject() {
+        return attachecObject;
     }
 
-    public void setAttachedObject(Object attachedObject) {
-        this.attachedObject = attachedObject;
+    public void setAttachecObject(T attachecObject) {
+        this.attachecObject = attachecObject;
     }
 
     public String getComment() {

@@ -115,6 +115,7 @@ public class SimpleWorkflowManager implements ApplicationEventPublisherAware {
         }
 
         SimpleWorkflow workflowInstance = new SimpleWorkflow();
+        workflowInstance.setWorkflowTemplateId(workflowTemplateId);
         workflowInstance.setTemplate(workflowTemplate);
         workflowInstance.setStatus(SimpleWorkflow.STATUS.PENDING);
 
@@ -136,6 +137,7 @@ public class SimpleWorkflowManager implements ApplicationEventPublisherAware {
             } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | InvocationTargetException e) {
                 e.printStackTrace();
             }
+            simpleWorkitem.setWorkitemTemplateId(workitemTemplate.getTemplateId());
             simpleWorkitem.setWorkitemTemplate(workitemTemplate);
             if(workitemTemplate.getTemplateId() == startWorkitemTemplateId){
                 workflowInstance.setStartWorkitem(simpleWorkitem);
@@ -150,11 +152,12 @@ public class SimpleWorkflowManager implements ApplicationEventPublisherAware {
 
         //set the next workitem to make workitem chain
         workitemMap.forEach((workitemTemplateId, simpleWorkitem) -> {
-                    simpleWorkitem.setNextWorkitem(workitemMap.get(simpleWorkitem.getWorkitemTemplate().getTemplateId()));
+                    simpleWorkitem.setNextWorkitem(workitemMap.get(simpleWorkitem.getWorkitemTemplate().getNextWorkitemTemplateId()));
                 }
         );
 
         workflowInstance.setWorkItemList(new ArrayList<SimpleWorkitem>(workitemMap.values()));
+        workflowInstance.setWorkItemEntityList(workitemMap.values().stream().map(SimpleWorkitem::toEntity).collect(Collectors.toList()));
         return workflowInstance;
     }
 
@@ -165,11 +168,11 @@ public class SimpleWorkflowManager implements ApplicationEventPublisherAware {
         workflowInstance.setCreateDate(workflow.getCreateDate());
         workflowInstance.setLastUpdateDateTime(workflow.getLastUpdateDateTime());
         workflowInstance.setStatus(workflow.getStatus());
-        Map<Long, SimpleWorkitem> workitemMap = workflow.getWorkItemList().stream().collect(
-                Collectors.toMap(SimpleWorkitem::getWorkitemTemplateId, Function.identity()));
+        Map<Long, SimpleWorkitemEntity> workitemMap = workflow.getWorkItemEntityList().stream().collect(
+                Collectors.toMap(SimpleWorkitemEntity::getWorkitemTemplateId, Function.identity()));
         workflowInstance.getWorkItemList().forEach(simpleWorkitem -> {
-            SimpleWorkitem workitemDataFromDB = workitemMap.get(simpleWorkitem.getWorkitemTemplate());
-            simpleWorkitem.setStatus(workitemDataFromDB.getStatus());
+            SimpleWorkitemEntity workitemDataFromDB = workitemMap.get(simpleWorkitem.getWorkitemTemplateId());
+            simpleWorkitem.setStatus(SimpleWorkitem.STATUS.valueOf(workitemDataFromDB.getStatus()));
             simpleWorkitem.setWorkitemId(workitemDataFromDB.getWorkitemId());
             simpleWorkitem.setWorkflowId(workitemDataFromDB.getWorkflowId());
             simpleWorkitem.setWorkitemTemplateId(workitemDataFromDB.getWorkitemTemplateId());
@@ -180,13 +183,38 @@ public class SimpleWorkflowManager implements ApplicationEventPublisherAware {
 
     public Long createWorkflow(Long workflowTemplateId) {
         SimpleWorkflow newWorkflow = instantiateWorkflow(workflowTemplateId);
-        SimpleWorkflow createdWorkflow = simpleWorkflowRepository.insertWorkflow(newWorkflow);
+        SimpleWorkflow createdWorkflow = simpleWorkflowRepository.updateWorkflow(newWorkflow);
         return createdWorkflow.getWorkflowId();
     }
 
     public void runWorkflow(SimpleWorkflow workflow, SimpleWorkflowEvent workflowEvent) {
+        if(workflow.getStatus() == SimpleWorkflow.STATUS.COMPLETED || workflow.getStatus() == SimpleWorkflow.STATUS.ERROR){
+            throw new RuntimeException(" Workflow can not be run at state: " + workflow.getStatus());
+        }else{
+            workflow.setStatus(SimpleWorkflow.STATUS.INPROGRESS);
+        }
         process(workflow.getStartWorkitem(), workflowEvent, workflow);
+        //check if all workitem completed not, if yes, then mark workflow completed
+        if(workflow.getWorkItemList().stream().allMatch(simpleWorkitem ->
+                simpleWorkitem.getStatus() == SimpleWorkitem.STATUS.COMPLETED)){
+            workflow.setStatus(SimpleWorkflow.STATUS.COMPLETED);
+        }
         simpleWorkflowRepository.updateWorkflow(workflow);
+    }
+
+    public void rejectWorkflow(SimpleWorkflow workflow, SimpleWorkflowEvent workflowEvent){
+        if(workflow.getStatus() == SimpleWorkflow.STATUS.COMPLETED || workflow.getStatus() == SimpleWorkflow.STATUS.REJECTED){
+            logger.info(" Workflow status is " +  workflow.getStatus() + "  can not be rejected");
+        }else{
+            for(SimpleWorkitem simpleWorkitem : workflow.getWorkItemList()){
+                if(simpleWorkitem.reject(workflowEvent) == SimpleWorkitem.STATUS.ERROR){
+                    logger.error(" Reject workflow error, error throw by workitem id: " + simpleWorkitem.getWorkitemId());
+                    workflow.setStatus(SimpleWorkflow.STATUS.ERROR);
+                    break;
+                }
+            }
+            simpleWorkflowRepository.updateWorkflow(workflow);
+        }
     }
 
     private void process(SimpleWorkitem simpleWorkitem, SimpleWorkflowEvent simpleWorkflowEvent, SimpleWorkflow simpleWorkflow) {

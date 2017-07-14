@@ -6,7 +6,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @Transactional
-public interface SimpleWorkitemDAO extends CrudRepository<SimpleWorkitem, Long>{
-
-    List<SimpleWorkitem> findByWorkflowId(Long workflowId);
+public interface SimpleWorkitemDAO extends CrudRepository<SimpleWorkitemEntity, Long>{
+    public List<SimpleWorkitemEntity> findByWorkflowId(Long workflowId);
 }

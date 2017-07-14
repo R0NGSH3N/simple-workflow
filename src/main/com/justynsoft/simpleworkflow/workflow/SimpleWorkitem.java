@@ -6,47 +6,28 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 
-import javax.persistence.*;
-import javax.validation.constraints.NotNull;
 import java.util.Date;
 
-@Entity
-@Table(name = "workitem")
-public abstract class SimpleWorkitem {
+public abstract class SimpleWorkitem<T extends SimpleWorkflowEvent> {
     private static final Logger logger = LoggerFactory.getLogger(SimpleWorkitem.class);
-    @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
-    @Column(name = "workitem_id")
     private Long workitemId;
-    @NotNull
-    @Column(name = "workflow_id")
     private Long workflowId;
-    @NotNull
-    @Column(name = "workitem_template_id")
     private Long workitemTemplateId;
-    @NotNull
-    @Column(name = "status")
     private STATUS status;
-    @Column(name = "create_datetime")
     private Date createDate;
-    @Column(name = "lastupdate_datetime")
     private Date lastUpdateDateTime;
-    @Transient
-    private Boolean isRerunable;
+    private Boolean isRerunable = false;
 
-    @Transient
     private WorkitemTemplate workitemTemplate;
-    @Transient
     private ApplicationContext applicationContext;
-    @Transient
     private SimpleWorkitem nextWorkitem;
+    @Autowired
+    private SimpleWorkflowExceptionHandler exceptionHandler;
+
 
     public Long getWorkitemTemplateId() {
         return workitemTemplateId;
     }
-
-    @Autowired
-    private SimpleWorkflowExceptionHandler exceptionHandler;
 
     public SimpleWorkflowExceptionHandler getExceptionHandler() {
         return exceptionHandler;
@@ -54,6 +35,10 @@ public abstract class SimpleWorkitem {
 
     public void setExceptionHandler(SimpleWorkflowExceptionHandler exceptionHandler) {
         this.exceptionHandler = exceptionHandler;
+    }
+
+    public SimpleWorkitemEntity toEntity(){
+        return new SimpleWorkitemEntity(this);
     }
 
     public Boolean getRerunable() {
@@ -133,16 +118,38 @@ public abstract class SimpleWorkitem {
     }
 
     public enum STATUS {
-        PENDING, INPROGRESS, COMPLETED, ERROR
+        PENDING, INPROGRESS, COMPLETED, ERROR, REJECTED
     }
 
-    public STATUS process(SimpleWorkflowEvent simpleWorkflowEvent, SimpleWorkflow simpleWorkflow) {
-        logger.info("Workitem " + this.getWorkitemId() + " start processing...");
+    public STATUS reject(T workflowEvent) {
+        logger.info(" Workitem received reject request. Workitem Id: " + this.getWorkitemId());
+        if (status == STATUS.COMPLETED || status == STATUS.REJECTED) {
+            logger.info(" Nothing to proceed, the workitem is already in status : " + status);
+            return status;
+        } else if (status == STATUS.ERROR || status == STATUS.PENDING) {
+            logger.info(" this workitem will flip to rejected status because current status is : " + status);
+            status = STATUS.REJECTED;
+            destroyWorkitem();
+            return status;
+        } else {
+            status = handleRejectEventOnStartedStatus(workflowEvent);
+            if (status == STATUS.REJECTED) {
+                logger.info(" workitem id : " + this.getWorkitemId() + " got rejected.");
+            } else {
+                logger.info("Workitem can not get rejected.");
+            }
+            return status;
+        }
+    }
+
+    public STATUS process(T simpleWorkflowEvent, SimpleWorkflow simpleWorkflow) {
         if (this.status == STATUS.COMPLETED && !isRerunable) {
             return this.status;
         } else {
+            logger.info("Workitem " + this.getWorkitemId() + " start processing...");
             String errorMessage = "";
             STATUS statusAfterProcess = handleEvent(simpleWorkflowEvent, errorMessage, simpleWorkflow);
+            this.status = statusAfterProcess;
             if (statusAfterProcess == STATUS.ERROR) {
                 logger.error("process error: " + errorMessage + " workevent: " + simpleWorkflowEvent + " workitem Id: " + this.getWorkitemId());
                 this.exceptionHandler.handleWorkitemErrorException(simpleWorkflow, simpleWorkflowEvent, this, errorMessage);
@@ -153,6 +160,10 @@ public abstract class SimpleWorkitem {
             return statusAfterProcess;
         }
     }
-    public abstract STATUS handleEvent(SimpleWorkflowEvent simpleWorkflowEvent, String errorMessage, SimpleWorkflow simpleWorkflow);
-    public abstract STATUS haneleRejectEventOnStartedStatus(SimpleWorkflowEvent simpleWorkflowEvent);
+
+    public abstract STATUS handleEvent(T simpleWorkflowEvent, String errorMessage, SimpleWorkflow simpleWorkflow);
+
+    public abstract STATUS handleRejectEventOnStartedStatus(T simpleWorkflowEvent);
+
+    public abstract void destroyWorkitem();
 }

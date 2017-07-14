@@ -12,11 +12,10 @@ import java.util.List;
 public class SimpleWorkflow {
     @Id
     @Column(name="workflow_id")
+    @GeneratedValue(strategy = GenerationType.AUTO)
     private Long workflowId;
-    @NotNull
     @Column(name="workflow_template_id")
     private Long workflowTemplateId;
-    @NotNull
     private STATUS status;
     @Column(name="create_datetime")
     private Date createDate;
@@ -26,9 +25,20 @@ public class SimpleWorkflow {
     @Transient
     private List<SimpleWorkitem> workItemList;
     @Transient
+    private List<SimpleWorkitemEntity> workItemEntityList;
+
+    @Transient
     private WorkflowTemplate template;
     @Transient
     private SimpleWorkitem startWorkitem;
+
+    public List<SimpleWorkitemEntity> getWorkItemEntityList() {
+        return workItemEntityList;
+    }
+
+    public void setWorkItemEntityList(List<SimpleWorkitemEntity> workItemEntityList) {
+        this.workItemEntityList = workItemEntityList;
+    }
 
     public SimpleWorkitem getStartWorkitem() {
         return startWorkitem;
@@ -95,6 +105,6 @@ public class SimpleWorkflow {
     }
 
     public enum STATUS {
-        PENDING, INPROGRESS, COMPLETED, ERROR
+        PENDING, INPROGRESS, COMPLETED, ERROR, REJECTED;
     }
 }
