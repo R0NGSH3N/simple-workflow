@@ -27,37 +27,4 @@ public class SimpleWorkitemRepository{
                 }
         );
     }
-
-    private static final String FIND_BY_WORKFLOW_ID = "SELECT * FROM workitem WHERE workflow_id = ? ";
-    public List<SimpleWorkitem> findByWorkflowId(Long workflowId){
-        return jdbcTemplate.query(FIND_BY_WORKFLOW_ID, new Object[]{workflowId}, new RowMapper<SimpleWorkitem>() {
-            @Override
-            public SimpleWorkitem mapRow(ResultSet resultSet, int i) throws SQLException {
-                SimpleWorkitem simpleWorkitem = new SimpleWorkitem() {
-                    @Override
-                    public STATUS handleEvent(SimpleWorkflowEvent simpleWorkflowEvent, String errorMessage, SimpleWorkflow simpleWorkflow) {
-                        return null;
-                    }
-
-                    @Override
-                    public STATUS handleRejectEventOnStartedStatus(SimpleWorkflowEvent simpleWorkflowEvent) {
-                        return null;
-                    }
-
-                    @Override
-                    public void destroyWorkitem() {
-
-                    }
-                };
-                simpleWorkitem.setWorkflowId(resultSet.getLong("workflow_id"));
-                simpleWorkitem.setWorkitemId(resultSet.getLong("workitem_id"));
-                simpleWorkitem.setStatus(SimpleWorkitem.STATUS.valueOf(resultSet.getString("status")));
-                simpleWorkitem.setCreateDate(resultSet.getDate("create_datetime"));
-                simpleWorkitem.setLastUpdateDateTime(resultSet.getDate("lastupdate_datetime"));
-                return simpleWorkitem;
-            }
-        });
-
-    }
-
 }
